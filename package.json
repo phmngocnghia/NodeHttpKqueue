@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "clang++ test-kqueue.cpp -o test-kqueue",
+    "build": "node-gyp configure build",
     "install": "node-gyp rebuild"
   },
   "author": "",

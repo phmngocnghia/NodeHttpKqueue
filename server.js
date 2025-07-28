@@ -1,27 +1,36 @@
 const { Kqueue } = require("./build/Release/kqueue");
-const fs = require("fs");
+const { spawn } = require("child_process");
 
-const kq = new Kqueue();
+// Create kqueue instance with callback
+const kq = new Kqueue((fd) => {
+  console.log("Kqueue event fired for fd:", fd);
+});
 
-// 1. Create a named pipe (FIFO)
-const fifoPath = "/tmp/myfifo";
-try {
-  fs.unlinkSync(fifoPath);
-} catch {}
-require("child_process").execSync(`mkfifo ${fifoPath}`);
+// Spawn a child process with pipes (cat just echoes input)
+const child = spawn("cat", [], {
+  stdio: ["pipe", "pipe", "pipe"],
+});
 
-// 2. Open FIFO in read-only non-blocking mode (we want FD)
-const fd = fs.openSync(fifoPath, "r");
-console.log("Watching FIFO:", fifoPath, "FD:", fd);
+// Get the underlying file descriptor for stdout
+const readFD = child.stdout._handle.fd;
+console.log("Child stdout FD =", readFD);
 
-// 3. Register FD with kqueue
-kq.addReadFD(fd);
+// Register the FD with kqueue
+kq.addReadFD(readFD);
 
-// 4. Block on wait (simulate server waiting for input)
-console.log("🔒 Blocking on kqueue...");
-const event = kq.wait();
-console.log("✅ Event triggered:", event);
+// Send data to child after a short delay
+setTimeout(() => {
+  console.log("Sending data to child process...");
+  child.stdin.write("hello from JS\n");
+  child.stdin.end(); // Signal end of input
+}, 1000);
 
-// 5. Read data
-const data = fs.readFileSync(fd, "utf-8");
-console.log("📥 Read from FIFO:", data);
+// Listen to output from the child
+child.stdout.on("data", (data) => {
+  console.log("Child output:", data.toString());
+});
+
+child.on("exit", (code) => {
+  console.log("Child exited with code", code);
+  kq.close();
+});
